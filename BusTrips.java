@@ -1,15 +1,30 @@
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 public class BusTrips {
+
+    public static boolean jePozitivenInt(String argument) {
+        try {
+            return Integer.parseInt(argument) > 0;
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
+
     public static void main(String[] args) throws IOException {
-        if(args.length != 3){
-            System.out.println("Uporaba: BusTrips <id postaje> <število naslednjih avtobusov> <oblika časa>");
+        if(
+                args.length != 3 ||
+                !jePozitivenInt(args[0]) ||
+                !jePozitivenInt(args[1]) ||
+                !args[2].equalsIgnoreCase("absolute") && !args[2].equalsIgnoreCase("relative")
+        ) {
+            System.out.println("Uporaba: BusTrips <id postaje> <število avtobusov> <absolute|relative>");
             return;
         }
 
@@ -17,8 +32,10 @@ public class BusTrips {
         int max_bus = Integer.parseInt(args[1]);
         String oblikaCasa = args[2];
 
-        //LocalDate danes = LocalDate.now();
-        //LocalTime trenutnaUra = LocalTime.now();
+        // =========== ZA REALEN ČAS ==================
+        /*LocalDate danes = LocalDate.now();
+        LocalTime trenutnaUra = LocalTime.now();*/
+        // ============================================
 
         // =========== ZA TESTIRANJE ==================
         LocalDate danes = LocalDate.of(2020, 3, 15);
@@ -28,6 +45,7 @@ public class BusTrips {
         LocalTime cezDveUri = trenutnaUra.plusHours(2);
         int stevilkaDnevaVTednu = danes.getDayOfWeek().getValue();
 
+        // ============== PRIDOBIVANJE AKTIVNIH STORITEV ===================
         Set<String> aktivneStoritve = new HashSet<>();
         DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("yyyyMMdd");
 
@@ -37,26 +55,34 @@ public class BusTrips {
             while ((line = br.readLine()) != null) {
                 String[] values = line.split(",");
 
-                if(danes.isBefore(LocalDate.parse(values[8], dateFormatter)) || danes.isAfter(LocalDate.parse(values[9], dateFormatter))) continue;
+                LocalDate startDate = LocalDate.parse(values[8], dateFormatter);
+                LocalDate endDate = LocalDate.parse(values[9], dateFormatter);
+                if(danes.isBefore(startDate) || danes.isAfter(endDate)) continue;
 
                 if(values[stevilkaDnevaVTednu].equals("1")){
-                    aktivneStoritve.add(values[0]);
+                    String serviceId = values[0];
+                    aktivneStoritve.add(serviceId);
                 }
             }
         }
 
+        // ============== PRIDOBIVANJE KATERI POT POTEKA NA KATERI LINIJI ===================
         Map<String, String> tripRoute = new HashMap<>();
         try(BufferedReader br = new BufferedReader(new FileReader("GTFS/trips.txt"))) {
             br.readLine();
             String line;
             while((line = br.readLine()) != null) {
                 String[] values = line.split(",");
-                if(aktivneStoritve.contains(values[1])) {
-                    tripRoute.put(values[2], values[0]);
+                String serviceID = values[1];
+                if(aktivneStoritve.contains(serviceID)) {
+                    String tripID = values[2];
+                    String routeID = values[0];
+                    tripRoute.put(tripID, routeID);
                 }
             }
         }
 
+        // ============== PRIDOBIVANJE POTREBNIH IMEN LINIJ ===================
         Map<String, String> routeNames = new HashMap<>();
         try(BufferedReader br = new BufferedReader(new FileReader("GTFS/routes.txt"))) {
             br.readLine();
@@ -64,19 +90,25 @@ public class BusTrips {
             while((line = br.readLine()) != null) {
                 String[] values = line.split(",");
 
-                if(!tripRoute.containsValue(values[0])) continue;
+                String routeID = values[0];
+                if(!tripRoute.containsValue(routeID)) continue;
 
-                routeNames.put(values[0], values[2]);
+                String routeShortName = values[2];
+                routeNames.put(routeID, routeShortName);
             }
         }
 
+        // ============== PRIDOBIVANJE VSEH VELJAVNIH ČASOV ZA POSAMEZNO LINIJO ===================
         Map<String, List<LocalTime>> casiZaPosameznoLinijo = new HashMap<>();
         try(BufferedReader br = new BufferedReader(new FileReader("GTFS/stop_times.txt"))) {
             br.readLine();
             String line;
             while((line = br.readLine()) != null) {
                 String[] values = line.split(",");
-                if(!values[3].equals(stop_id) || !tripRoute.containsKey(values[0])) continue;
+
+                String stopIdLine = values[3];
+                String tripId = values[0];
+                if(!stopIdLine.equals(stop_id) || !tripRoute.containsKey(tripId)) continue;
 
                 LocalTime arrival_time = LocalTime.parse(values[1]);
                 if(arrival_time.isBefore(trenutnaUra) || arrival_time.isAfter(cezDveUri)) continue;
@@ -85,6 +117,38 @@ public class BusTrips {
                 casiZaPosameznoLinijo.putIfAbsent(routeNames.get(route_id),new ArrayList<>());
                 casiZaPosameznoLinijo.get(routeNames.get(route_id)).add(arrival_time);
             }
+        }
+
+        // ============== PRIDOBIVANJE IMENA POSTAJALIŠČA ===================
+        try(BufferedReader br = new BufferedReader(new FileReader("GTFS/stops.txt"))) {
+            br.readLine();
+            String line;
+            while((line = br.readLine()) != null) {
+                String[] values = line.split(",");
+
+                String stopId = values[0];
+                if(!stopId.equals(stop_id)) continue;
+
+                String stopName = values[2];
+                System.out.println("Postajališče " + stopName);
+            }
+        }
+
+        // ============== IZPIS VSEGA ===================
+        for(String relacija : casiZaPosameznoLinijo.keySet()) {
+            List<LocalTime> prihodi = casiZaPosameznoLinijo.get(relacija).stream().sorted().limit(max_bus).toList();
+
+            System.out.print(relacija + ": ");
+            for(int i = 0; i < prihodi.size(); i++) {
+                if(oblikaCasa.equalsIgnoreCase("absolute")){
+                    System.out.print(prihodi.get(i));
+                } else {
+                    long razlika = Duration.between(trenutnaUra, prihodi.get(i)).toMinutes();
+                    System.out.print(razlika + "min");
+                }
+                if(i < prihodi.size() - 1) System.out.print(", ");
+            }
+            System.out.println();
         }
     }
 }
