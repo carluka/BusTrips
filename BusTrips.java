@@ -4,10 +4,7 @@ import java.io.IOException;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 public class BusTrips {
     public static void main(String[] args) throws IOException {
@@ -31,7 +28,7 @@ public class BusTrips {
         LocalTime cezDveUri = trenutnaUra.plusHours(2);
         int stevilkaDnevaVTednu = danes.getDayOfWeek().getValue();
 
-        Set<String> aktivneStoritve = new HashSet<String>();
+        Set<String> aktivneStoritve = new HashSet<>();
         DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("yyyyMMdd");
 
         try(BufferedReader br = new BufferedReader(new FileReader("GTFS/calendar.txt"))) {
@@ -60,6 +57,34 @@ public class BusTrips {
             }
         }
 
+        Map<String, String> routeNames = new HashMap<>();
+        try(BufferedReader br = new BufferedReader(new FileReader("GTFS/routes.txt"))) {
+            br.readLine();
+            String line;
+            while((line = br.readLine()) != null) {
+                String[] values = line.split(",");
 
+                if(!tripRoute.containsValue(values[0])) continue;
+
+                routeNames.put(values[0], values[2]);
+            }
+        }
+
+        Map<String, List<LocalTime>> casiZaPosameznoLinijo = new HashMap<>();
+        try(BufferedReader br = new BufferedReader(new FileReader("GTFS/stop_times.txt"))) {
+            br.readLine();
+            String line;
+            while((line = br.readLine()) != null) {
+                String[] values = line.split(",");
+                if(!values[3].equals(stop_id) || !tripRoute.containsKey(values[0])) continue;
+
+                LocalTime arrival_time = LocalTime.parse(values[1]);
+                if(arrival_time.isBefore(trenutnaUra) || arrival_time.isAfter(cezDveUri)) continue;
+
+                String route_id = tripRoute.get(values[0]);
+                casiZaPosameznoLinijo.putIfAbsent(routeNames.get(route_id),new ArrayList<>());
+                casiZaPosameznoLinijo.get(routeNames.get(route_id)).add(arrival_time);
+            }
+        }
     }
 }
