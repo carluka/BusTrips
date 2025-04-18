@@ -4,7 +4,9 @@ import java.io.IOException;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 public class BusTrips {
@@ -42,6 +44,18 @@ public class BusTrips {
 
                 if(values[stevilkaDnevaVTednu].equals("1")){
                     aktivneStoritve.add(values[0]);
+                }
+            }
+        }
+
+        Map<String, String> tripRoute = new HashMap<>();
+        try(BufferedReader br = new BufferedReader(new FileReader("GTFS/trips.txt"))) {
+            br.readLine();
+            String line;
+            while((line = br.readLine()) != null) {
+                String[] values = line.split(",");
+                if(aktivneStoritve.contains(values[1])) {
+                    tripRoute.put(values[2], values[0]);
                 }
             }
         }
